@@ -1,0 +1,51 @@
+name: Update completed NBA games
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: completed-game-import
+  cancel-in-progress: false
+jobs:
+  check-finals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check and import missing finals
+        env:
+          FINAL_SYNC_KEY: ${{ secrets.FINAL_SYNC_KEY }}
+        shell: python
+        run: |
+          import json, os, time, urllib.request, urllib.error
+          key = os.environ.get('FINAL_SYNC_KEY', '')
+          if not key:
+              raise SystemExit('The endpoint-only import secret is not configured.')
+          url = 'https://48index.com/api/sync/finals'
+          for attempt in range(2):
+              request = urllib.request.Request(url, method='POST', headers={
+                  'X-48-Final-Key': key,
+                  'Accept': 'application/json',
+                  'User-Agent': '48index-final-scheduler/1.0',
+              })
+              try:
+                  with urllib.request.urlopen(request, timeout=70) as response:
+                      result = json.load(response)
+                  break
+              except urllib.error.HTTPError as error:
+                  if error.code not in (429, 502, 503, 504) or attempt:
+                      raise SystemExit('Final import endpoint returned HTTP ' + str(error.code))
+                  time.sleep(15)
+              except (urllib.error.URLError, TimeoutError):
+                  # A timed-out write is uncertain. The site lease and persisted
+                  # completeness checks make the one bounded retry idempotent.
+                  if attempt:
+                      raise SystemExit('Final import endpoint did not respond.')
+                  time.sleep(15)
+          safe = {name: result[name] for name in (
+              'skipped', 'reason', 'busy', 'saved', 'attempts', 'pending',
+              'calendarFailed', 'warmed', 'nextAt'
+          ) if name in result}
+          print(json.dumps(safe, sort_keys=True))
+          if result.get('errors') or result.get('calendarFailed'):
+              raise SystemExit('Source data is pending; bounded retries and the daily safety check remain active.')
