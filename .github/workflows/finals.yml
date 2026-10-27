@@ -48,7 +48,7 @@ jobs:
           if isinstance(next_at, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z', next_at):
               safe['nextAt'] = next_at
           categories = {'source_pending', 'source_http', 'source_transport', 'identity_mismatch', 'unknown'}
-          codes = {'incomplete_data', 'identity_mismatch', 'timeout', 'unknown'} | {str(i) for i in range(400, 600)}
+          codes = {'incomplete_data', 'not_final', 'missing_boxscore', 'empty_boxscore', 'missing_stat_column', 'watch_score_pending', 'identity_mismatch', 'timeout', 'unknown'} | {str(i) for i in range(400, 600)}
           diagnostics = result.get('diagnostics')
           if isinstance(diagnostics, list):
               safe['diagnostics'] = []

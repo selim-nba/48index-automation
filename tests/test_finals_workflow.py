@@ -56,4 +56,19 @@ class WorkflowTests(unittest.TestCase):
             self.assertNotIn('secret', out + err)
             self.assertTrue(err)
 
+    def test_new_diagnostic_codes_are_preserved(self):
+        for code in ('not_final', 'missing_boxscore', 'empty_boxscore', 'missing_stat_column', 'watch_score_pending'):
+            out, err, calls = execute([Response({
+                'errors': ['espn-1'],
+                'diagnostics': [{
+                    'category': 'source_pending',
+                    'code': code,
+                    'retryable': True,
+                    'gameId': 'espn-1',
+                }],
+            })])
+            self.assertEqual(json.loads(out)['diagnostics'][0]['code'], code)
+            self.assertTrue(err)
+            self.assertEqual(calls, 1)
+
 if __name__ == '__main__': unittest.main()
