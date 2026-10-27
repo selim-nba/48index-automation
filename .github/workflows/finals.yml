@@ -17,35 +17,49 @@ jobs:
           FINAL_SYNC_KEY: ${{ secrets.FINAL_SYNC_KEY }}
         shell: python
         run: |
-          import json, os, time, urllib.request, urllib.error
+          import json, os, re, urllib.request, urllib.error
           key = os.environ.get('FINAL_SYNC_KEY', '')
           if not key:
               raise SystemExit('The endpoint-only import secret is not configured.')
           url = 'https://48index.com/api/sync/finals'
-          for attempt in range(2):
-              request = urllib.request.Request(url, method='POST', headers={
-                  'X-48-Final-Key': key,
-                  'Accept': 'application/json',
-                  'User-Agent': '48index-final-scheduler/1.0',
-              })
-              try:
-                  with urllib.request.urlopen(request, timeout=70) as response:
-                      result = json.load(response)
-                  break
-              except urllib.error.HTTPError as error:
-                  if error.code not in (429, 502, 503, 504) or attempt:
-                      raise SystemExit('Final import endpoint returned HTTP ' + str(error.code))
-                  time.sleep(15)
-              except (urllib.error.URLError, TimeoutError):
-                  # A timed-out write is uncertain. The site lease and persisted
-                  # completeness checks make the one bounded retry idempotent.
-                  if attempt:
-                      raise SystemExit('Final import endpoint did not respond.')
-                  time.sleep(15)
-          safe = {name: result[name] for name in (
-              'skipped', 'reason', 'busy', 'saved', 'attempts', 'pending',
-              'calendarFailed', 'warmed', 'nextAt'
-          ) if name in result}
+          request = urllib.request.Request(url, method='POST', headers={
+              'X-48-Final-Key': key,
+              'Accept': 'application/json',
+              'User-Agent': '48index-final-scheduler/1.0',
+          })
+          try:
+              with urllib.request.urlopen(request, timeout=70) as response:
+                  result = json.load(response)
+          except urllib.error.HTTPError as error:
+              raise SystemExit('Final import endpoint returned HTTP ' + str(error.code))
+          except (urllib.error.URLError, TimeoutError):
+              raise SystemExit('Final import endpoint did not respond; write outcome is uncertain. The next scheduled check can reconcile it.')
+          safe = {}
+          for name in ('skipped', 'busy', 'calendarFailed', 'warmed'):
+              if isinstance(result.get(name), bool):
+                  safe[name] = result[name]
+          for name in ('saved', 'attempts', 'pending'):
+              value = result.get(name)
+              if type(value) is int and 0 <= value <= 1000000:
+                  safe[name] = value
+          if result.get('reason') == 'not_due':
+              safe['reason'] = 'not_due'
+          next_at = result.get('nextAt')
+          if isinstance(next_at, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z', next_at):
+              safe['nextAt'] = next_at
+          categories = {'source_pending', 'source_http', 'source_transport', 'identity_mismatch', 'unknown'}
+          codes = {'incomplete_data', 'identity_mismatch', 'timeout', 'unknown'} | {str(i) for i in range(400, 600)}
+          diagnostics = result.get('diagnostics')
+          if isinstance(diagnostics, list):
+              safe['diagnostics'] = []
+              for item in diagnostics[:4]:
+                  if not isinstance(item, dict) or not isinstance(item.get('category'), str) or item['category'] not in categories or not isinstance(item.get('code'), str) or item['code'] not in codes or not isinstance(item.get('retryable'), bool):
+                      continue
+                  entry = {name: item[name] for name in ('category', 'code', 'retryable')}
+                  game_id = item.get('gameId')
+                  if isinstance(game_id, str) and re.fullmatch(r'espn-[0-9]+', game_id):
+                      entry['gameId'] = game_id
+                  safe['diagnostics'].append(entry)
           print(json.dumps(safe, sort_keys=True))
           if result.get('errors') or result.get('calendarFailed'):
-              raise SystemExit('Source data is pending; bounded retries and the daily safety check remain active.')
+              raise SystemExit('Final import reported errors; the next scheduled check and daily safety check can retry pending work.')
