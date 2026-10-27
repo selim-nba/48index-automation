@@ -49,24 +49,9 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('reported errors', err)
         self.assertEqual(calls, 1)
 
-    def test_timeout_and_http_do_not_repeat_uncertain_write(self):
-        for failure in (TimeoutError(), urllib.error.HTTPError('https://example.com', 503, 'secret', {}, None)):
-            out, err, calls = execute([failure])
-            self.assertEqual(calls, 1)
-            self.assertNotIn('secret', out + err)
-            self.assertTrue(err)
-
     def test_new_diagnostic_codes_are_preserved(self):
         for code in ('not_final', 'missing_boxscore', 'empty_boxscore', 'missing_stat_column', 'watch_score_pending'):
-            out, err, calls = execute([Response({
-                'errors': ['espn-1'],
-                'diagnostics': [{
-                    'category': 'source_pending',
-                    'code': code,
-                    'retryable': True,
-                    'gameId': 'espn-1',
-                }],
-            })])
+            out, err, calls = execute([Response({'errors': ['espn-1'], 'diagnostics': [{'category': 'source_pending', 'code': code, 'retryable': True, 'gameId': 'espn-1'}]})])
             self.assertEqual(json.loads(out)['diagnostics'][0]['code'], code)
             self.assertTrue(err)
             self.assertEqual(calls, 1)
@@ -86,5 +71,39 @@ class WorkflowTests(unittest.TestCase):
             self.assertNotIn('watchPending', json.loads(out))
             self.assertIsNone(err)
             self.assertEqual(calls, 1)
+
+    def test_watch_diagnostic_and_repair_are_allowlisted(self):
+        out, err, calls = execute([Response({'errors': [], 'diagnostics': [
+            {'category': 'source_pending', 'code': 'watch_pbp_score_mismatch', 'retryable': True, 'gameId': 'espn-123', 'repair': 'rejected'},
+            {'category': 'internal_error', 'code': 'watch_internal_error', 'retryable': True, 'repair': 'secret'},
+        ]})])
+        diagnostics = json.loads(out)['diagnostics']
+        self.assertEqual(diagnostics[0]['repair'], 'rejected')
+        self.assertNotIn('repair', diagnostics[1])
+        self.assertNotIn('secret', out)
+        self.assertIsNone(err)
+        self.assertEqual(calls, 1)
+
+    def test_every_watch_reason_is_emitted(self):
+        reasons = ('missing_game', 'lease_busy', 'reason_unknown_legacy',
+                   'performance_too_few', 'performance_minutes', 'performance_overall',
+                   'performance_stats', 'invalid_final_score', 'performance_invalid',
+                   'pbp_missing_events', 'pbp_start_incomplete', 'pbp_final_period_missing',
+                   'pbp_end_incomplete', 'pbp_period_missing', 'pbp_score_mismatch',
+                   'pbp_event_gap', 'pbp_unresolved', 'pbp_uncertainty')
+        for reason in reasons:
+            item = {'category': 'source_pending', 'code': 'watch_' + reason,
+                    'retryable': True, 'gameId': 'espn-123', 'repair': 'not_attempted'}
+            out, err, calls = execute([Response({'errors': [], 'diagnostics': [item]})])
+            self.assertEqual(json.loads(out)['diagnostics'], [item])
+            self.assertIsNone(err)
+            self.assertEqual(calls, 1)
+
+    def test_timeout_and_http_do_not_repeat_uncertain_write(self):
+        for failure in (TimeoutError(), urllib.error.HTTPError('https://example.com', 503, 'secret', {}, None)):
+            out, err, calls = execute([failure])
+            self.assertEqual(calls, 1)
+            self.assertNotIn('secret', out + err)
+            self.assertTrue(err)
 
 if __name__ == '__main__': unittest.main()

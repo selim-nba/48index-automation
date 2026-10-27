@@ -47,8 +47,8 @@ jobs:
           next_at = result.get('nextAt')
           if isinstance(next_at, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z', next_at):
               safe['nextAt'] = next_at
-          categories = {'source_pending', 'source_http', 'source_transport', 'identity_mismatch', 'unknown'}
-          codes = {'incomplete_data', 'not_final', 'missing_boxscore', 'empty_boxscore', 'missing_stat_column', 'watch_score_pending', 'identity_mismatch', 'timeout', 'unknown'} | {str(i) for i in range(400, 600)}
+          categories = {'source_pending', 'source_http', 'source_transport', 'identity_mismatch', 'internal_error', 'unknown'}
+          codes = {'incomplete_data', 'not_final', 'missing_boxscore', 'empty_boxscore', 'missing_stat_column', 'watch_score_pending', 'watch_missing_game', 'watch_lease_busy', 'watch_reason_unknown_legacy', 'watch_performance_too_few', 'watch_performance_minutes', 'watch_performance_overall', 'watch_performance_stats', 'watch_invalid_final_score', 'watch_performance_invalid', 'watch_pbp_missing_events', 'watch_pbp_start_incomplete', 'watch_pbp_final_period_missing', 'watch_pbp_end_incomplete', 'watch_pbp_period_missing', 'watch_pbp_score_mismatch', 'watch_pbp_event_gap', 'watch_pbp_unresolved', 'watch_pbp_uncertainty', 'watch_internal_error', 'identity_mismatch', 'timeout', 'unknown'} | {str(i) for i in range(400, 600)}
           diagnostics = result.get('diagnostics')
           if isinstance(diagnostics, list):
               safe['diagnostics'] = []
@@ -56,6 +56,9 @@ jobs:
                   if not isinstance(item, dict) or not isinstance(item.get('category'), str) or item['category'] not in categories or not isinstance(item.get('code'), str) or item['code'] not in codes or not isinstance(item.get('retryable'), bool):
                       continue
                   entry = {name: item[name] for name in ('category', 'code', 'retryable')}
+                  repair = item.get('repair')
+                  if repair in ('not_attempted', 'rejected', 'failed_after_repair'):
+                      entry['repair'] = repair
                   game_id = item.get('gameId')
                   if isinstance(game_id, str) and re.fullmatch(r'espn-[0-9]+', game_id):
                       entry['gameId'] = game_id
