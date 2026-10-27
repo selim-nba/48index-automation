@@ -38,7 +38,7 @@ jobs:
           for name in ('skipped', 'busy', 'calendarFailed', 'warmed'):
               if isinstance(result.get(name), bool):
                   safe[name] = result[name]
-          for name in ('saved', 'attempts', 'pending'):
+          for name in ('saved', 'attempts', 'pending', 'gamePending', 'watchPending'):
               value = result.get(name)
               if type(value) is int and 0 <= value <= 1000000:
                   safe[name] = value

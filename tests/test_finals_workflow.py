@@ -71,4 +71,20 @@ class WorkflowTests(unittest.TestCase):
             self.assertTrue(err)
             self.assertEqual(calls, 1)
 
+    def test_game_and_watch_pending_counters_are_bounded_integers(self):
+        out, err, calls = execute([Response({
+            'gamePending': 0, 'watchPending': 3, 'errors': [],
+        })])
+        self.assertEqual(json.loads(out), {'gamePending': 0, 'watchPending': 3})
+        self.assertIsNone(err)
+        self.assertEqual(calls, 1)
+        for invalid in (True, False, '3', -1, 1000001):
+            out, err, calls = execute([Response({
+                'gamePending': invalid, 'watchPending': invalid, 'errors': [],
+            })])
+            self.assertNotIn('gamePending', json.loads(out))
+            self.assertNotIn('watchPending', json.loads(out))
+            self.assertIsNone(err)
+            self.assertEqual(calls, 1)
+
 if __name__ == '__main__': unittest.main()
