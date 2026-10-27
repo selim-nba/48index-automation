@@ -59,6 +59,14 @@ jobs:
                   repair = item.get('repair')
                   if repair in ('not_attempted', 'rejected', 'failed_after_repair'):
                       entry['repair'] = repair
+                  repair_reasons = {'candidate_missing', 'competition_invalid', 'game_identity_mismatch', 'teams_invalid', 'official_score_mismatch', 'boxscore_invalid', 'player_stats_invalid', 'player_totals_mismatch', 'scoring_event_invalid', 'candidate_invalid', 'candidate_participants_invalid', 'event_invalid', 'score_sequence_mismatch', 'final_totals_mismatch'}
+                  repair_reason = item.get('repairReason')
+                  if repair == 'rejected' and isinstance(repair_reason, str) and repair_reason in repair_reasons:
+                      entry['repairReason'] = repair_reason
+                  comparison = item.get('scoreComparison')
+                  score_keys = ('officialAway', 'officialHome', 'terminalAway', 'terminalHome')
+                  if item['code'] == 'watch_pbp_score_mismatch' and isinstance(comparison, dict) and all(type(comparison.get(k)) is int and 0 <= comparison[k] <= 999 for k in score_keys):
+                      entry['scoreComparison'] = {k: comparison[k] for k in score_keys}
                   game_id = item.get('gameId')
                   if isinstance(game_id, str) and re.fullmatch(r'espn-[0-9]+', game_id):
                       entry['gameId'] = game_id
