@@ -106,4 +106,24 @@ class WorkflowTests(unittest.TestCase):
             self.assertNotIn('secret', out + err)
             self.assertTrue(err)
 
+    def test_score_diagnostics_are_bounded_and_allowlisted(self):
+        base = {'category': 'source_pending', 'code': 'watch_pbp_score_mismatch', 'retryable': True, 'gameId': 'espn-123', 'repair': 'rejected'}
+        comparison = {'officialAway': 98, 'officialHome': 96, 'terminalAway': 98, 'terminalHome': 100, 'secret': 'hidden'}
+        out, err, _ = execute([Response({'diagnostics': [dict(base, repairReason='candidate_missing', scoreComparison=comparison)], 'errors': []})])
+        item = json.loads(out)['diagnostics'][0]
+        self.assertEqual(item['repairReason'], 'candidate_missing')
+        self.assertEqual(item['scoreComparison'], {k: comparison[k] for k in ('officialAway', 'officialHome', 'terminalAway', 'terminalHome')})
+        self.assertNotIn('hidden', out)
+        self.assertIsNone(err)
+        for invalid in (True, False, '100', -1, 1000, None):
+            bad = dict(comparison, terminalHome=invalid)
+            out, _, _ = execute([Response({'diagnostics': [dict(base, repairReason='secret', scoreComparison=bad)]})])
+            item = json.loads(out)['diagnostics'][0]
+            self.assertNotIn('scoreComparison', item)
+            self.assertNotIn('repairReason', item)
+            self.assertNotIn('secret', out)
+        for reason in ('candidate_missing', 'competition_invalid', 'game_identity_mismatch', 'teams_invalid', 'official_score_mismatch', 'boxscore_invalid', 'player_stats_invalid', 'player_totals_mismatch', 'scoring_event_invalid', 'candidate_invalid', 'candidate_participants_invalid', 'event_invalid', 'score_sequence_mismatch', 'final_totals_mismatch'):
+            out, _, _ = execute([Response({'diagnostics': [dict(base, repairReason=reason)]})])
+            self.assertEqual(json.loads(out)['diagnostics'][0]['repairReason'], reason)
+
 if __name__ == '__main__': unittest.main()
